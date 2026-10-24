@@ -1,0 +1,31 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+		A10000000000000000000001 /* RemoteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* RemoteView.swift */; };
+		A10000000000000000000002 /* SamsungRemote.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* SamsungRemote.swift */; };
+		A10000000000000000000003 /* AU9000RemoteApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* AU9000RemoteApp.swift */; };
+		A20000000000000000000001 /* RemoteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteView.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* SamsungRemote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SamsungRemote.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* AU9000RemoteApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AU9000RemoteApp.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A30000000000000000000001 /* AU9000Remote.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AU9000Remote.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A40000000000000000000001 /* Sources */ = {isa = PBXGroup; children = (A20000000000000000000001, A20000000000000000000002, A20000000000000000000003, A20000000000000000000004,); sourceTree = "<group>"; };
+		A40000000000000000000002 /* Products */ = {isa = PBXGroup; children = (A30000000000000000000001,); name = Products; sourceTree = "<group>"; };
+		A40000000000000000000003 = {isa = PBXGroup; children = (A40000000000000000000001, A40000000000000000000002,); sourceTree = "<group>"; };
+		A50000000000000000000001 /* AU9000Remote */ = {isa = PBXNativeTarget; buildConfigurationList = A60000000000000000000001; buildPhases = (A70000000000000000000001, A70000000000000000000002, A70000000000000000000003,); buildRules = (); dependencies = (); name = AU9000Remote; productName = AU9000Remote; productReference = A30000000000000000000001; productType = "com.apple.product-type.application"; };
+		A50000000000000000000002 /* Project */ = {isa = PBXProject; attributes = {BuildIndependentTargetsIn parallel = 1; LastUpgradeCheck = 1600; TargetAttributes = {A50000000000000000000001 = {CreatedOnToolsVersion = 16.0; }; }; }; buildConfigurationList = A60000000000000000000002; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base,); mainGroup = A40000000000000000000003; productRefGroup = A40000000000000000000002; projectDirPath = ""; projectRoot = ""; targets = (A50000000000000000000001,); };
+		A70000000000000000000001 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001, A10000000000000000000002, A10000000000000000000003,); runOnlyForDeploymentPostprocessing = 0; };
+		A70000000000000000000002 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		A70000000000000000000003 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		A60000000000000000000001 /* Target configs */ = {isa = XCConfigurationList; buildConfigurations = (A80000000000000000000001, A80000000000000000000002,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A60000000000000000000002 /* Project configs */ = {isa = XCConfigurationList; buildConfigurations = (A80000000000000000000003, A80000000000000000000004,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A80000000000000000000001 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGNING_ALLOWED = NO; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Info.plist; PRODUCT_BUNDLE_IDENTIFIER = com.example.AU9000Remote; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0; IPHONEOS_DEPLOYMENT_TARGET = 16.0; TARGETED_DEVICE_FAMILY = "1,2"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphoneos-simulator";}; name = Debug; };
+		A80000000000000000000002 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGNING_ALLOWED = NO; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Info.plist; PRODUCT_BUNDLE_IDENTIFIER = com.example.AU9000Remote; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0; IPHONEOS_DEPLOYMENT_TARGET = 16.0; TARGETED_DEVICE_FAMILY = "1,2"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphoneos-simulator";}; name = Release; };
+		A80000000000000000000003 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; IPHONEOS_DEPLOYMENT_TARGET = 16.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.0;}; name = Debug; };
+		A80000000000000000000004 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; IPHONEOS_DEPLOYMENT_TARGET = 16.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.0;}; name = Release; };
+	};
+	rootObject = A50000000000000000000002;
+}
