@@ -14,6 +14,8 @@ final class SamsungRemote: NSObject, ObservableObject, URLSessionWebSocketDelega
     @Published private(set) var connected = false
     @Published private(set) var connecting = false
     @Published private(set) var status = "搜尋電視，或輸入 IP 位址連線。"
+    @Published private(set) var currentHost = ""
+    @Published private(set) var connectedTVName = ""
     @Published private(set) var discoveredTVs: [DiscoveredTV] = []
     @Published private(set) var isSearching = false
     @Published private(set) var discoveryStatus = "尚未搜尋。"
@@ -61,11 +63,14 @@ final class SamsungRemote: NSObject, ObservableObject, URLSessionWebSocketDelega
         }
     }
 
-    func connect(host: String) {
+    func connect(host: String, name: String? = nil) {
         let clean = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { status = "請輸入電視 IP 位址。"; return }
         socket?.cancel(with: .goingAway, reason: nil)
         self.host = clean
+        currentHost = clean
+        connectedTVName = name ?? UserDefaults.standard.string(forKey: "tvName_\(clean)") ?? "Samsung TV"
+        if let name { UserDefaults.standard.set(name, forKey: "tvName_\(clean)") }
         var components = URLComponents()
         components.scheme = "wss"
         components.host = clean
