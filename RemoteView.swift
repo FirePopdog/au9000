@@ -12,28 +12,83 @@ struct RemoteView: View {
                 Text("AU9000 · 同一個 Wi-Fi 網路").foregroundStyle(.secondary)
 
                 HStack {
-                    TextField("電視 IP 位址", text: $host)
+                    TextField("電視 IP 位址或主機名稱", text: $host)
                         .textInputAutocapitalization(.never)
                         .keyboardType(.decimalPad)
                         .textFieldStyle(.roundedBorder)
                         .focused($ipFieldFocused)
                         .submitLabel(.done)
                         .onSubmit { ipFieldFocused = false }
-                    Button(remote.connected ? "中斷" : "連線") {
+                    Button {
+                        ipFieldFocused = false
+                        remote.searchForTVs()
+                    } label: {
+                        Label("搜尋", systemImage: "magnifyingglass")
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                HStack(spacing: 10) {
+                    Circle()
+                        .fill(remote.connected ? Color.green : (remote.connecting ? Color.orange : Color.gray))
+                        .frame(width: 10, height: 10)
+                    Text(remote.connected ? "已連線" : (remote.connecting ? "連線中" : (remote.isSearching ? "搜尋中" : "未連線")))
+                        .font(.subheadline.weight(.semibold))
+                    if remote.connecting || remote.isSearching { RGBLoadingView() }
+                    Spacer(minLength: 4)
+                    Text(remote.status)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                .frame(maxWidth: .infinity, minHeight: 32)
+
+                HStack {
+                    Text("搜尋到的電視").font(.headline)
+                    Spacer()
+                    Text(remote.discoveryStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                ForEach(remote.discoveredTVs) { tv in
+                    Button {
+                        host = tv.host
+                        ipFieldFocused = false
+                        UserDefaults.standard.set(tv.host, forKey: "tvHost")
+                        remote.connect(host: tv.host)
+                    } label: {
+                        HStack {
+                            Image(systemName: "tv")
+                            VStack(alignment: .leading) {
+                                Text(tv.name).font(.body.weight(.medium))
+                                Text(tv.host).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "arrow.right.circle")
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                HStack(spacing: 12) {
+                    Button(remote.connected ? "中斷連線" : "連線") {
                         ipFieldFocused = false
                         UserDefaults.standard.set(host, forKey: "tvHost")
                         remote.connected ? remote.disconnect() : remote.connect(host: host)
                     }
                     .buttonStyle(.borderedProminent)
-                }
+                    .disabled(remote.connecting || (!remote.connected && host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
 
-                HStack(spacing: 10) {
-                    if remote.connecting { RGBLoadingView() }
-                    Text(remote.status)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    if !remote.connected && !remote.connecting && !host.isEmpty {
+                        Button("快速重連") {
+                            ipFieldFocused = false
+                            remote.connect(host: host)
+                        }
+                        .buttonStyle(.bordered)
+                    }
                 }
-                .frame(maxWidth: .infinity, minHeight: 32)
 
                 Button { remote.key("KEY_POWER") } label: { Label("電源", systemImage: "power") }
                     .buttonStyle(.bordered)
