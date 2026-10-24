@@ -210,7 +210,7 @@ final class SamsungRemote: NSObject, ObservableObject, URLSessionWebSocketDelega
 
     private func stopSubnetScan() {
         subnetTargets.removeAll()
-        let active = subnetConnections.values
+        let active = Array(subnetConnections.values)
         subnetConnections.removeAll()
         activeSubnetScans = 0
         for connection in active {
