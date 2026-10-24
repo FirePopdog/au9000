@@ -2,13 +2,47 @@ import SwiftUI
 import UIKit
 import AudioToolbox
 
+private struct SavedTV: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var name: String
+    var host: String
+}
+
+private struct RemoteShortcut: Identifiable {
+    let id: String
+    let title: String
+    let key: String
+    let icon: String
+    var tint: Color = .primary
+
+    static let catalog: [RemoteShortcut] = [
+        .init(id: "youtube", title: "YouTube", key: "KEY_YOUTUBE", icon: "play.rectangle.fill", tint: .red),
+        .init(id: "netflix", title: "Netflix", key: "KEY_NETFLIX", icon: "play.rectangle.fill", tint: .red),
+        .init(id: "source", title: "訊源", key: "KEY_SOURCE", icon: "rectangle.on.rectangle"),
+        .init(id: "volumeUp", title: "音量＋", key: "KEY_VOLUP", icon: "speaker.plus"),
+        .init(id: "volumeDown", title: "音量－", key: "KEY_VOLDOWN", icon: "speaker.minus"),
+        .init(id: "mute", title: "靜音", key: "KEY_MUTE", icon: "speaker.slash"),
+        .init(id: "home", title: "首頁", key: "KEY_HOME", icon: "house"),
+        .init(id: "back", title: "返回", key: "KEY_RETURN", icon: "arrow.uturn.backward"),
+        .init(id: "play", title: "播放／暫停", key: "KEY_PLAY", icon: "playpause")
+    ]
+}
+
 struct RemoteView: View {
     @StateObject private var remote = SamsungRemote()
     @State private var host = UserDefaults.standard.string(forKey: "tvHost") ?? ""
     @State private var showingSettings = false
+    @State private var showingTVManager = false
+    @State private var savedTVs: [SavedTV] = Self.loadSavedTVs()
     @FocusState private var ipFieldFocused: Bool
     @AppStorage("remoteHaptics") private var hapticsEnabled = true
     @AppStorage("remoteKeySound") private var keySoundEnabled = false
+    @AppStorage("remoteQuickShortcutIDs") private var shortcutIDs = "youtube,netflix,source,volumeUp,volumeDown,mute"
+
+    private var selectedShortcuts: [RemoteShortcut] {
+        let selected = Set(shortcutIDs.split(separator: ",").map(String.init))
+        return RemoteShortcut.catalog.filter { selected.contains($0.id) }
+    }
 
     var body: some View {
         ScrollView {
@@ -61,6 +95,43 @@ struct RemoteView: View {
                 tvInfoCard
 
                 HStack {
+                    Text("我的電視").font(.headline)
+                    Spacer()
+                    Button("管理") { showingTVManager = true }
+                        .font(.subheadline)
+                }
+                if savedTVs.isEmpty {
+                    Text("搜尋到電視後會自動收藏，也可以在「管理」中手動新增。")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    ForEach(savedTVs) { tv in
+                        Button {
+                            host = tv.host
+                            ipFieldFocused = false
+                            UserDefaults.standard.set(tv.host, forKey: "tvHost")
+                            remote.connect(host: tv.host, name: tv.name)
+                        } label: {
+                            HStack {
+                                Image(systemName: "tv")
+                                VStack(alignment: .leading) {
+                                    Text(tv.name).font(.body.weight(.medium))
+                                    Text(tv.host).font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if remote.currentHost.caseInsensitiveCompare(tv.host) == .orderedSame && remote.connected {
+                                    Label("使用中", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green)
+                                } else {
+                                    Image(systemName: "arrow.right.circle")
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+
+                HStack {
                     Text("搜尋到的電視").font(.headline)
                     Spacer()
                     Button(remote.isSearching ? "搜尋中…" : "重新搜尋") {
@@ -75,6 +146,7 @@ struct RemoteView: View {
                         ipFieldFocused = false
                         UserDefaults.standard.set(tv.host, forKey: "tvHost")
                         UserDefaults.standard.set(tv.name, forKey: "tvName_\(tv.host)")
+                        rememberTV(name: tv.name, host: tv.host)
                         remote.connect(host: tv.host, name: tv.name)
                     } label: {
                         HStack {
@@ -118,15 +190,15 @@ struct RemoteView: View {
 
                 VStack(alignment: .leading, spacing: 10) {
                     Text("快捷按鍵").font(.headline)
-                    HStack(spacing: 8) {
-                        quickKey("YouTube", "KEY_YOUTUBE", icon: "play.rectangle.fill", tint: .red)
-                        quickKey("Netflix", "KEY_NETFLIX", icon: "play.rectangle.fill", tint: .red)
-                        quickKey("訊源", "KEY_SOURCE", icon: "rectangle.on.rectangle")
-                    }
-                    HStack(spacing: 8) {
-                        quickKey("音量＋", "KEY_VOLUP", icon: "speaker.plus")
-                        quickKey("音量－", "KEY_VOLDOWN", icon: "speaker.minus")
-                        quickKey("靜音", "KEY_MUTE", icon: "speaker.slash")
+                    if selectedShortcuts.isEmpty {
+                        Text("前往設定選擇要顯示的快捷按鍵。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                            ForEach(selectedShortcuts) { shortcut in
+                                quickKey(shortcut.title, shortcut.key, icon: shortcut.icon, tint: shortcut.tint)
+                            }
+                        }
                     }
                 }
 
@@ -179,6 +251,32 @@ struct RemoteView: View {
             }
         }
         .sheet(isPresented: $showingSettings) { RemoteSettingsView() }
+        .sheet(isPresented: $showingTVManager) {
+            SavedTVManagerView(tvs: $savedTVs)
+        }
+        .onChange(of: savedTVs) { newValue in Self.saveTVs(newValue) }
+    }
+
+    private func rememberTV(name: String, host: String) {
+        if let index = savedTVs.firstIndex(where: { $0.host.caseInsensitiveCompare(host) == .orderedSame }) {
+            savedTVs[index].name = name
+        } else {
+            savedTVs.append(SavedTV(name: name, host: host))
+        }
+    }
+
+    private static func loadSavedTVs() -> [SavedTV] {
+        if let data = UserDefaults.standard.data(forKey: "savedTVProfiles"),
+           let values = try? JSONDecoder().decode([SavedTV].self, from: data) { return values }
+        if let host = UserDefaults.standard.string(forKey: "tvHost"), !host.isEmpty {
+            return [SavedTV(name: UserDefaults.standard.string(forKey: "tvName_\(host)") ?? "Samsung TV", host: host)]
+        }
+        return []
+    }
+
+    private static func saveTVs(_ tvs: [SavedTV]) {
+        guard let data = try? JSONEncoder().encode(tvs) else { return }
+        UserDefaults.standard.set(data, forKey: "savedTVProfiles")
     }
 
     private var tvInfoCard: some View {
@@ -269,6 +367,7 @@ private struct TouchPadView: View {
 private struct RemoteSettingsView: View {
     @AppStorage("remoteHaptics") private var hapticsEnabled = true
     @AppStorage("remoteKeySound") private var keySoundEnabled = false
+    @AppStorage("remoteQuickShortcutIDs") private var shortcutIDs = "youtube,netflix,source,volumeUp,volumeDown,mute"
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -278,10 +377,14 @@ private struct RemoteSettingsView: View {
                     Toggle("震動回饋", isOn: $hapticsEnabled)
                     Toggle("按鍵音", isOn: $keySoundEnabled)
                 }
-                Section {
-                    Text("快捷列提供 YouTube、Netflix、訊源、音量和靜音按鍵。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                Section("首頁快捷列") {
+                    ForEach(RemoteShortcut.catalog) { shortcut in
+                        Toggle(isOn: shortcutBinding(shortcut)) {
+                            Label(shortcut.title, systemImage: shortcut.icon)
+                        }
+                    }
+                    Text("勾選要放在首頁的 App、訊源或常用按鍵。")
+                        .font(.footnote).foregroundStyle(.secondary)
                 }
             }
             .navigationTitle("遙控器設定")
@@ -293,6 +396,71 @@ private struct RemoteSettingsView: View {
             }
         }
         .presentationDetents([.medium])
+    }
+
+    private func shortcutBinding(_ shortcut: RemoteShortcut) -> Binding<Bool> {
+        Binding(
+            get: { Set(shortcutIDs.split(separator: ",").map(String.init)).contains(shortcut.id) },
+            set: { enabled in
+                var ids = Set(shortcutIDs.split(separator: ",").map(String.init))
+                if enabled { ids.insert(shortcut.id) } else { ids.remove(shortcut.id) }
+                shortcutIDs = RemoteShortcut.catalog.map(\.id).filter { ids.contains($0) }.joined(separator: ",")
+            }
+        )
+    }
+}
+
+private struct SavedTVManagerView: View {
+    @Binding var tvs: [SavedTV]
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var host = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("已收藏的電視") {
+                    if tvs.isEmpty { Text("尚無收藏電視").foregroundStyle(.secondary) }
+                    ForEach($tvs) { $tv in
+                        VStack(alignment: .leading, spacing: 6) {
+                            TextField("電視名稱", text: $tv.name)
+                            TextField("IP 位址或主機名稱", text: $tv.host)
+                                .textInputAutocapitalization(.never)
+                                .keyboardType(.URL)
+                        }
+                    }
+                    .onDelete { tvs.remove(atOffsets: $0) }
+                }
+                Section("新增電視") {
+                    TextField("名稱，例如客廳電視", text: $name)
+                    TextField("IP 位址或主機名稱", text: $host)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
+                    Button { addTV() } label: { Label("新增收藏", systemImage: "plus.circle.fill") }
+                        .disabled(host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .navigationTitle("我的電視")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { Button("完成") { dismiss() } }
+                ToolbarItem(placement: .topBarLeading) { EditButton() }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func addTV() {
+        let cleanHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanHost.isEmpty else { return }
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let index = tvs.firstIndex(where: { $0.host.caseInsensitiveCompare(cleanHost) == .orderedSame }) {
+            tvs[index].name = cleanName.isEmpty ? tvs[index].name : cleanName
+        } else {
+            tvs.append(SavedTV(name: cleanName.isEmpty ? "Samsung TV" : cleanName, host: cleanHost))
+        }
+        name = ""
+        host = ""
     }
 }
 
