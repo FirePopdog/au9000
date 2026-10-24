@@ -1,1 +1,23 @@
+name: Build unsigned iOS IPA
 
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build for iPhone without signing
+        run: xcodebuild -project AU9000Remote.xcodeproj -scheme AU9000Remote -configuration Release -sdk iphoneos -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p ipa/Payload
+          cp -R build/Build/Products/Release-iphoneos/AU9000Remote.app ipa/Payload/
+          cd ipa
+          /usr/bin/zip -qr ../AU9000Remote-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AU9000Remote-unsigned-ipa
+          path: AU9000Remote-unsigned.ipa
+          if-no-files-found: error
