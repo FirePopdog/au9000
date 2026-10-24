@@ -140,6 +140,8 @@ final class SamsungRemote: NSObject, ObservableObject, URLSessionWebSocketDelega
         }
     }
 
+    // Samsung TVs commonly use a self-signed certificate for their local secure WebSocket.
+    // Trust is scoped to the TV connection; this app sends only remote key commands.
     func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
         if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
@@ -182,12 +184,18 @@ extension SamsungRemote: NetServiceBrowserDelegate, NetServiceDelegate {
     }
 
     nonisolated func netServiceBrowser(_ browser: NetServiceBrowser, didNotSearch errorDict: [String: NSNumber]) {
-        let error = String(describing: errorDict)
+        let code = errorDict["NSNetServicesErrorCode"]?.intValue
+        let detail: String
+        if code == -72008 {
+            detail = "App 缺少區域網路／Bonjour 設定。請安裝最新版本；若已是最新版，請刪除 App 後重新安裝。"
+        } else {
+            detail = "搜尋失敗（錯誤碼：\(code.map(String.init) ?? "未知")）。請確認已允許區域網路，或手動輸入電視 IP。"
+        }
         Task { @MainActor [weak self] in
             guard let self, self.browser === browser else { return }
             self.isSearching = false
             self.browser = nil
-            self.discoveryStatus = "搜尋失敗：\(error)"
+            self.discoveryStatus = detail
         }
     }
 }
