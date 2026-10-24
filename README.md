@@ -9,11 +9,11 @@ This is a complete Xcode SwiftUI project for a basic iPhone remote that connects
 The included GitHub Actions workflow builds on a hosted macOS runner and packages an unsigned IPA. To run it:
 
 1. Create a GitHub repository and upload the contents of this project folder.
-2. Open the repository's **Actions** tab and enable workflows if prompted.
-3. Select **Build unsigned iOS IPA** → **Run workflow**.
-4. When it finishes, download the 0AU9000Remote-unsigned-ipa0 artifact from that run.
+2. Open the repository's Actions tab and enable workflows if prompted.
+3. Select Build unsigned iOS IPA, then Run workflow.
+4. When it finishes, download the AU9000Remote-unsigned-ipa artifact from that run.
 
-The bundle identifier is currently 0com.example.AU9000Remote0; replace it with your own unique identifier in the Xcode project and 0Info.plist0 before signing. An unsigned IPA is a build artifact, not directly installable; sign it with your own certificate and provisioning profile using your preferred signing tool.
+The bundle identifier is currently com.example.AU9000Remote; replace it with your own unique identifier in the Xcode project and Info.plist before signing. An unsigned IPA is a build artifact, not directly installable; sign it with your own certificate and provisioning profile using your preferred signing tool.
 
 ## Use
 
