@@ -10,6 +10,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build for iPhone without signing
         run: xcodebuild -project AU9000Remote.xcodeproj -scheme AU9000Remote -configuration Release -sdk iphoneos -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+      - name: Verify local network configuration
+        run: |
+          APP_INFO=build/Build/Products/Release-iphoneos/AU9000Remote.app/Info.plist
+          plutil -lint "$APP_INFO"
+          /usr/libexec/PlistBuddy -c "Print :NSLocalNetworkUsageDescription" "$APP_INFO"
+          /usr/libexec/PlistBuddy -c "Print :NSBonjourServices:0" "$APP_INFO"
       - name: Package unsigned IPA
         run: |
           mkdir -p ipa/Payload
