@@ -1,5 +1,7 @@
 import Foundation
 import Combine
+import Network
+import Darwin
 
 struct DiscoveredTV: Identifiable {
     let name: String
@@ -22,6 +24,9 @@ final class SamsungRemote: NSObject, ObservableObject, URLSessionWebSocketDelega
     private var browser: NetServiceBrowser?
     private var services: [NetService] = []
     private var searchTimeout: Task<Void, Never>?
+    private var subnetTargets: [String] = []
+    private var subnetConnections: [String: NWConnection] = [:]
+    private var activeSubnetScans = 0
 
     override init() {
         super.init()
@@ -30,6 +35,7 @@ final class SamsungRemote: NSObject, ObservableObject, URLSessionWebSocketDelega
 
     func searchForTVs() {
         searchTimeout?.cancel()
+        stopSubnetScan()
         browser?.stop()
         browser = nil
         services.removeAll()
@@ -43,10 +49,11 @@ final class SamsungRemote: NSObject, ObservableObject, URLSessionWebSocketDelega
         serviceBrowser.searchForServices(ofType: "_samsungmsf._tcp.", inDomain: "local.")
 
         searchTimeout = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            try? await Task.sleep(nanoseconds: 20_000_000_000)
             guard let self, !Task.isCancelled else { return }
             self.browser?.stop()
             self.browser = nil
+            self.stopSubnetScan()
             self.isSearching = false
             self.discoveryStatus = self.discoveredTVs.isEmpty
                 ? "找不到電視。請確認同一個 Wi-Fi，或手動輸入 IP。"
@@ -140,6 +147,108 @@ final class SamsungRemote: NSObject, ObservableObject, URLSessionWebSocketDelega
         }
     }
 
+    private func startSubnetScan() {
+        guard let targets = wifiSubnetTargets(), !targets.isEmpty else {
+            isSearching = false
+            discoveryStatus = "LiveContainer 阻擋 Bonjour，且無法讀取 Wi-Fi 網段。請手動輸入電視 IP。"
+            return
+        }
+        subnetTargets = targets
+        activeSubnetScans = 0
+        discoveryStatus = "LiveContainer 不支援此 Bonjour 服務，改用 Wi-Fi IP 掃描…"
+        launchSubnetScans()
+    }
+
+    private func launchSubnetScans() {
+        let port = NWEndpoint.Port(rawValue: 8002)!
+        while activeSubnetScans < 48, !subnetTargets.isEmpty {
+            let ip = subnetTargets.removeFirst()
+            let connection = NWConnection(host: NWEndpoint.Host(ip), port: port, using: .tcp)
+            subnetConnections[ip] = connection
+            activeSubnetScans += 1
+            connection.stateUpdateHandler = { [weak self, weak connection] state in
+                guard let connection else { return }
+                switch state {
+                case .ready:
+                    Task { @MainActor [weak self] in self?.finishSubnetProbe(ip, found: true) }
+                case .failed, .cancelled:
+                    Task { @MainActor [weak self] in self?.finishSubnetProbe(ip, found: false) }
+                default:
+                    break
+                }
+            }
+            connection.start(queue: .global(qos: .userInitiated))
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                guard let self, self.subnetConnections[ip] === connection else { return }
+                self.finishSubnetProbe(ip, found: false)
+            }
+        }
+        finishSubnetScanIfDone()
+    }
+
+    private func finishSubnetProbe(_ ip: String, found: Bool) {
+        guard let connection = subnetConnections.removeValue(forKey: ip) else { return }
+        connection.stateUpdateHandler = nil
+        connection.cancel()
+        activeSubnetScans = max(0, activeSubnetScans - 1)
+        if found, !discoveredTVs.contains(where: { $0.host == ip }) {
+            discoveredTVs.append(DiscoveredTV(name: "Samsung TV (\(ip))", host: ip))
+            discoveredTVs.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            discoveryStatus = "找到 \(discoveredTVs.count) 台電視。"
+        }
+        launchSubnetScans()
+    }
+
+    private func finishSubnetScanIfDone() {
+        guard subnetTargets.isEmpty, activeSubnetScans == 0, isSearching else { return }
+        isSearching = false
+        discoveryStatus = discoveredTVs.isEmpty
+            ? "沒有找到電視。請確認同一個 Wi-Fi，或手動輸入 IP。"
+            : "找到 \(discoveredTVs.count) 台電視。"
+    }
+
+    private func stopSubnetScan() {
+        subnetTargets.removeAll()
+        let active = subnetConnections.values
+        subnetConnections.removeAll()
+        activeSubnetScans = 0
+        for connection in active {
+            connection.stateUpdateHandler = nil
+            connection.cancel()
+        }
+    }
+
+    private func wifiSubnetTargets() -> [String]? {
+        var first: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&first) == 0, let first else { return nil }
+        defer { freeifaddrs(first) }
+        var cursor: UnsafeMutablePointer<ifaddrs>? = first
+        while let interface = cursor {
+            defer { cursor = interface.pointee.ifa_next }
+            guard String(cString: interface.pointee.ifa_name) == "en0",
+                  let address = interface.pointee.ifa_addr,
+                  Int32(address.pointee.sa_family) == AF_INET,
+                  let netmask = interface.pointee.ifa_netmask else { continue }
+            let ip = address.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { UInt32(bigEndian: $0.pointee.sin_addr.s_addr) }
+            let mask = netmask.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { UInt32(bigEndian: $0.pointee.sin_addr.s_addr) }
+            let network = ip & mask
+            let broadcast = network | ~mask
+            guard broadcast > network + 1 else { return nil }
+            let range: ClosedRange<UInt32>
+            if broadcast - network <= 1024 {
+                range = (network + 1)...(broadcast - 1)
+            } else {
+                let local24 = ip & 0xFFFF_FF00
+                range = (local24 + 1)...(local24 + 254)
+            }
+            return range.filter { $0 != ip }.map { value in
+                "\((value >> 24) & 255).\((value >> 16) & 255).\((value >> 8) & 255).\(value & 255)"
+            }
+        }
+        return nil
+    }
+
     // Samsung TVs commonly use a self-signed certificate for their local secure WebSocket.
     // Trust is scoped to the TV connection; this app sends only remote key commands.
     func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
@@ -187,7 +296,7 @@ extension SamsungRemote: NetServiceBrowserDelegate, NetServiceDelegate {
         let code = errorDict["NSNetServicesErrorCode"]?.intValue
         let detail: String
         if code == -72008 {
-            detail = "App 缺少區域網路／Bonjour 設定。請安裝最新版本；若已是最新版，請刪除 App 後重新安裝。"
+            detail = "Bonjour 在目前的啟動方式不可用，改用 Wi-Fi IP 掃描。"
         } else {
             detail = "搜尋失敗（錯誤碼：\(code.map(String.init) ?? "未知")）。請確認已允許區域網路，或手動輸入電視 IP。"
         }
@@ -196,6 +305,10 @@ extension SamsungRemote: NetServiceBrowserDelegate, NetServiceDelegate {
             self.isSearching = false
             self.browser = nil
             self.discoveryStatus = detail
+            if code == -72008 {
+                self.isSearching = true
+                self.startSubnetScan()
+            }
         }
     }
 }
