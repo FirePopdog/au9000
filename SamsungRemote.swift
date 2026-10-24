@@ -1,19 +1,57 @@
 import Foundation
 import Combine
 
+struct DiscoveredTV: Identifiable {
+    let name: String
+    let host: String
+    var id: String { host }
+}
+
 @MainActor
 final class SamsungRemote: NSObject, ObservableObject, URLSessionWebSocketDelegate {
     @Published private(set) var connected = false
     @Published private(set) var connecting = false
-    @Published private(set) var status = "輸入電視 IP 後連線，首次連線請在電視上選擇允許。"
+    @Published private(set) var status = "搜尋電視，或輸入 IP 位址連線。"
+    @Published private(set) var discoveredTVs: [DiscoveredTV] = []
+    @Published private(set) var isSearching = false
+    @Published private(set) var discoveryStatus = "尚未搜尋。"
     private var session: URLSession!
     private var socket: URLSessionWebSocketTask?
     private var host = ""
     private var token: String? { UserDefaults.standard.string(forKey: "tvToken_\(host)") }
+    private var browser: NetServiceBrowser?
+    private var services: [NetService] = []
+    private var searchTimeout: Task<Void, Never>?
 
     override init() {
         super.init()
         session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+    }
+
+    func searchForTVs() {
+        searchTimeout?.cancel()
+        browser?.stop()
+        browser = nil
+        services.removeAll()
+        discoveredTVs.removeAll()
+        isSearching = true
+        discoveryStatus = "正在搜尋同一個 Wi-Fi 網路上的 Samsung 電視…"
+
+        let serviceBrowser = NetServiceBrowser()
+        serviceBrowser.delegate = self
+        browser = serviceBrowser
+        serviceBrowser.searchForServices(ofType: "_samsungmsf._tcp.", inDomain: "local.")
+
+        searchTimeout = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.browser?.stop()
+            self.browser = nil
+            self.isSearching = false
+            self.discoveryStatus = self.discoveredTVs.isEmpty
+                ? "找不到電視。請確認同一個 Wi-Fi，或手動輸入 IP。"
+                : "找到 \(self.discoveredTVs.count) 台電視。"
+        }
     }
 
     func connect(host: String) {
@@ -102,8 +140,6 @@ final class SamsungRemote: NSObject, ObservableObject, URLSessionWebSocketDelega
         }
     }
 
-    // Samsung TVs commonly use a self-signed certificate for their local secure WebSocket.
-    // Trust is scoped to the TV connection; this app sends only remote key commands.
     func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
         if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
@@ -117,5 +153,41 @@ final class SamsungRemote: NSObject, ObservableObject, URLSessionWebSocketDelega
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask,
                     didOpenWithProtocol protocol: String?) {
         Task { @MainActor in self.status = "等待電視確認連線…" }
+    }
+}
+
+extension SamsungRemote: NetServiceBrowserDelegate, NetServiceDelegate {
+    nonisolated func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService,
+                                       moreComing: Bool) {
+        Task { @MainActor [weak self] in
+            guard let self, self.browser === browser else { return }
+            self.services.append(service)
+            service.delegate = self
+            service.resolve(withTimeout: 5)
+        }
+    }
+
+    nonisolated func netServiceDidResolveAddress(_ sender: NetService) {
+        let serviceName = sender.name
+        guard let resolvedHost = sender.hostName?.trimmingCharacters(in: CharacterSet(charactersIn: ".")),
+              !resolvedHost.isEmpty else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let tv = DiscoveredTV(name: serviceName, host: resolvedHost)
+            guard !self.discoveredTVs.contains(where: { $0.host == tv.host }) else { return }
+            self.discoveredTVs.append(tv)
+            self.discoveredTVs.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            self.discoveryStatus = "找到 \(self.discoveredTVs.count) 台電視。"
+        }
+    }
+
+    nonisolated func netServiceBrowser(_ browser: NetServiceBrowser, didNotSearch errorDict: [String: NSNumber]) {
+        let error = String(describing: errorDict)
+        Task { @MainActor [weak self] in
+            guard let self, self.browser === browser else { return }
+            self.isSearching = false
+            self.browser = nil
+            self.discoveryStatus = "搜尋失敗：\(error)"
+        }
     }
 }
